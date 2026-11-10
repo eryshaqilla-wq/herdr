@@ -455,26 +455,14 @@ impl Default for AgentsSidebarConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentPanelMode {
     #[default]
+    #[serde(alias = "compact", alias = "custom")]
     Eso,
+    #[serde(alias = "upstream", alias = "stock", alias = "original")]
     Default,
-}
-
-impl<'de> Deserialize<'de> for AgentPanelMode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.to_lowercase().as_str() {
-            "default" | "upstream" | "stock" | "original" => Ok(AgentPanelMode::Default),
-            "eso" | "compact" | "custom" => Ok(AgentPanelMode::Eso),
-            _ => Ok(AgentPanelMode::Eso),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
