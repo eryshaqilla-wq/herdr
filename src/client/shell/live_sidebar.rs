@@ -326,7 +326,7 @@ pub(super) fn render_live_panel(
         area.x,
         area.y + 1,
         area.width,
-        " live coding",
+        " codeviewer",
         Style::default()
             .fg(palette.overlay0)
             .add_modifier(Modifier::BOLD),
