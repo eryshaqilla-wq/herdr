@@ -338,13 +338,21 @@ pub(super) fn agent_row(
         .unwrap_or("agy")
         .to_string();
 
+    let fallback_agent_name = match machine {
+        Some("poco-ubuntu") => "agent-ubuntu",
+        Some("poco-debian") => "agent-debian",
+        Some(m) if m.contains("ubuntu") => "agent-ubuntu",
+        Some(m) if m.contains("debian") => "agent-debian",
+        Some(m) => m,
+        None => "master",
+    };
+
     let agent_name = agent
         .name
         .as_deref()
         .or(agent.title.as_deref())
         .or_else(|| pane.and_then(|p| p.label.as_deref()))
-        .or(agent_label)
-        .unwrap_or(&agent.pane_id)
+        .unwrap_or(fallback_agent_name)
         .to_string();
 
     let machine_label = machine.unwrap_or("Local").to_string();

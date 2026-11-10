@@ -51,7 +51,27 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         return None;
     }
 
-    // 1. Blacklist checks (strict rejection of UI chrome, banners, chat, prompts)
+    // 1. AGY Tool runner line format: Running (<command>...) (ctrl+o to expand)
+    // IMPORTANT: Check this FIRST before blacklist because AGY lines often contain "(esc to cancel)"!
+    if trimmed.contains("Running (") {
+        if let Some(start_idx) = trimmed.find("Running (") {
+            let rest = &trimmed[start_idx + "Running (".len()..];
+            let cmd_text = if let Some(end_idx) = rest.find(") (") {
+                &rest[..end_idx]
+            } else if let Some(end_idx) = rest.rfind(')') {
+                &rest[..end_idx]
+            } else {
+                rest
+            };
+            let clean_cmd = cmd_text.trim();
+            // Hanya terima jika perintah utuh dan tidak terpotong tanda ...
+            if !clean_cmd.is_empty() && !clean_cmd.ends_with("...") {
+                return Some(clean_cmd.to_string());
+            }
+        }
+    }
+
+    // 2. Blacklist checks (strict rejection of UI chrome, banners, chat, prompts)
     let lower = trimmed.to_lowercase();
     if lower.contains("antigravity cli")
         || lower.contains("@gmail.com")
@@ -70,6 +90,11 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         || lower.contains("press enter")
         || lower.contains("run /logout")
     {
+        return None;
+    }
+
+    // Tolak baris status/progress terminal yang terpotong elipsis (...)
+    if trimmed.ends_with("...") || trimmed.contains("... ×") || trimmed.contains("...) (") {
         return None;
     }
 
@@ -121,33 +146,33 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         }
     }
 
-    // 2. AGY Tool runner line format: Running (<command>...) (ctrl+o to expand)
-    if trimmed.contains("Running (") {
-        if let Some(start_idx) = trimmed.find("Running (") {
-            let rest = &trimmed[start_idx + "Running (".len()..];
-            let cmd_text = if let Some(end_idx) = rest.find(") (") {
-                &rest[..end_idx]
-            } else if let Some(end_idx) = rest.rfind(')') {
-                &rest[..end_idx]
-            } else {
-                rest
-            };
-            let clean_cmd = cmd_text.trim();
-            if !clean_cmd.is_empty() {
-                return Some(format!("$ {clean_cmd}"));
-            }
+    // Shell prompts with ❯ or ➜ (Zsh/Starship/Oh-My-Zsh) -> tampilkan perintah murni tanpa $
+    if trimmed.starts_with('❯') || trimmed.starts_with('➜') {
+        let after_prompt = trimmed.trim_start_matches(|c: char| c == '❯' || c == '➜' || c == ' ').trim();
+        let first_word = after_prompt.split_whitespace().next().unwrap_or("");
+        if is_known_command(first_word) {
+            return Some(after_prompt.to_string());
         }
     }
 
-    // 3. Direct shell command detection ($ command or # command)
-    if trimmed.starts_with("$ ") || trimmed.starts_with("# ") {
-        return Some(trimmed.to_string());
+    // 3. Direct shell command detection ($ command or # command) -> tampilkan murni tanpa $ / #
+    if let Some(cmd) = trimmed.strip_prefix("$ ") {
+        let c = cmd.trim();
+        if !c.is_empty() {
+            return Some(c.to_string());
+        }
+    }
+    if let Some(cmd) = trimmed.strip_prefix("# ") {
+        let c = cmd.trim();
+        if !c.is_empty() {
+            return Some(c.to_string());
+        }
     }
 
-    // 4. Starts with a known binary or shell command
+    // 4. Starts with a known binary or shell command -> tampilkan murni tanpa $
     let first_word = trimmed.split_whitespace().next().unwrap_or("");
     if is_known_command(first_word) {
-        return Some(format!("$ {trimmed}"));
+        return Some(trimmed.to_string());
     }
 
     // 5. Git diff lines
@@ -431,9 +456,8 @@ pub(super) fn render_live_panel(
     let mut wrapped_lines: Vec<(String, Style)> = Vec::new();
     for raw_line in lines_source {
         let t = raw_line.trim_start();
-        let style = if t.starts_with('$') || t.starts_with('#') {
-            Style::default().fg(palette.accent).add_modifier(Modifier::BOLD)
-        } else if t.starts_with('+') {
+        // Aturan styling asli: hanya baris git diff yang diberi warna khusus, selebihnya warna teks normal
+        let style = if t.starts_with('+') {
             Style::default().fg(palette.green)
         } else if t.starts_with('-') {
             Style::default().fg(palette.red)
@@ -441,21 +465,6 @@ pub(super) fn render_live_panel(
             Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)
         } else if t.starts_with("diff") || t.starts_with("index") || t.starts_with("---") || t.starts_with("+++") {
             Style::default().fg(palette.yellow)
-        } else if t.starts_with("//") || t.starts_with('#') || t.starts_with("/*") || t.starts_with('*') {
-            Style::default().fg(palette.overlay1)
-        } else if t.starts_with("fn ")
-            || t.starts_with("pub ")
-            || t.starts_with("def ")
-            || t.starts_with("class ")
-            || t.starts_with("import ")
-            || t.starts_with("from ")
-            || t.starts_with("let ")
-            || t.starts_with("const ")
-            || t.starts_with("return ")
-            || t.starts_with("struct ")
-            || t.starts_with("impl ")
-        {
-            Style::default().fg(palette.mauve).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette.text)
         };
@@ -498,17 +507,27 @@ mod tests {
 
     #[test]
     fn test_parse_code_or_command() {
+        // Baris yang terpotong elipsis (...) ditolak agar tidak menampilkan kode terpotong
         assert_eq!(
             parse_code_or_command("Running (su -c \"screencap -p...) (ctrl+o to expand)"),
-            Some("$ su -c \"screencap -p...".to_string())
+            None
+        );
+        // Perintah utuh diterima dan ditampilkan murni tanpa awalan $
+        assert_eq!(
+            parse_code_or_command("Running (curl -s https://api.binance.com) (esc to cancel)"),
+            Some("curl -s https://api.binance.com".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("❯ git status"),
+            Some("git status".to_string())
         );
         assert_eq!(
             parse_code_or_command("curl -s https://api.binance.com"),
-            Some("$ curl -s https://api.binance.com".to_string())
+            Some("curl -s https://api.binance.com".to_string())
         );
         assert_eq!(
             parse_code_or_command("git status -s"),
-            Some("$ git status -s".to_string())
+            Some("git status -s".to_string())
         );
         assert_eq!(
             parse_code_or_command("+pub fn main() {"),
