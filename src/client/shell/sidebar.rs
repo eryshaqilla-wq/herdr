@@ -443,6 +443,7 @@ pub(crate) fn render_sidebar(
         buffer,
         detail_area,
         snapshot,
+        state.expanded_agents,
         config,
         state.agent_scroll,
         hits,

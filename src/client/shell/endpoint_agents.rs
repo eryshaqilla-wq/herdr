@@ -48,6 +48,7 @@ pub(super) fn render_expanded(
     agent_view_label: Option<&str>,
     endpoints: &[ClientShellEndpoint],
     active_endpoint_id: &ClientEndpointId,
+    expanded_agents: &HashSet<String>,
     config: &ClientShellConfig,
     agent_scroll: &mut usize,
     hits: &mut ShellHitMap,
@@ -70,9 +71,21 @@ pub(super) fn render_expanded(
         config,
         agent_scroll,
         hits,
-        |row| row.agent.rows.len(),
+        |row| {
+            if expanded_agents.contains(&row.agent.pane_id) {
+                row.agent.rows.len()
+            } else {
+                1
+            }
+        },
         |buffer, rect, row, hits| {
-            super::agent_sidebar::render_agent_row(buffer, rect, &row.agent, config);
+            super::agent_sidebar::render_agent_row(
+                buffer,
+                rect,
+                &row.agent,
+                expanded_agents.contains(&row.agent.pane_id),
+                config,
+            );
             if row.stale {
                 buffer.set_style(
                     rect,
@@ -106,7 +119,13 @@ impl ClientShellState {
         };
         let heights = rows
             .iter()
-            .map(|row| row.agent.rows.len().max(1).min(u16::MAX as usize) as u16)
+            .map(|row| {
+                if self.expanded_agents.contains(&row.agent.pane_id) {
+                    row.agent.rows.len().max(1).min(u16::MAX as usize) as u16
+                } else {
+                    1
+                }
+            })
             .collect::<Vec<_>>();
         let mut gaps = vec![self.config.agents.row_gap; rows.len()];
         if let Some(last) = gaps.last_mut() {

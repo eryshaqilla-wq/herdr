@@ -568,6 +568,7 @@ pub(super) fn render_expanded(
         active_snapshot.and_then(|snapshot| snapshot.agent_view_label.as_deref()),
         state.endpoints,
         state.active_endpoint_id,
+        state.expanded_agents,
         config,
         state.agent_scroll,
         hits,

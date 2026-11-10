@@ -54,6 +54,7 @@ pub(super) fn render_agent_panel(
     buffer: &mut Buffer,
     area: Rect,
     snapshot: &ClientShellSnapshot,
+    expanded_agents: &HashSet<String>,
     config: &ClientShellConfig,
     agent_scroll: &mut usize,
     hits: &mut ShellHitMap,
@@ -80,10 +81,22 @@ pub(super) fn render_agent_panel(
         config,
         agent_scroll,
         hits,
-        |row| row.rows.len(),
+        |row| {
+            if expanded_agents.contains(&row.pane_id) {
+                row.rows.len()
+            } else {
+                1
+            }
+        },
         |buffer, rect, row, hits| {
             hits.agents.push((rect, row.pane_id.clone()));
-            render_agent_row(buffer, rect, row, config);
+            render_agent_row(
+                buffer,
+                rect,
+                row,
+                expanded_agents.contains(&row.pane_id),
+                config,
+            );
         },
     );
 }
@@ -323,6 +336,7 @@ pub(super) fn render_agent_row(
     buffer: &mut Buffer,
     rect: Rect,
     row: &AgentRow,
+    expanded: bool,
     config: &ClientShellConfig,
 ) {
     let palette = &config.palette;
@@ -340,6 +354,7 @@ pub(super) fn render_agent_row(
         status_icon(row.status, config.status_indicators),
         Style::default().fg(status_color(row.status, palette)),
     );
+    let marker = if expanded { "▾" } else { "▸" };
     let rows = if row.rows.is_empty() {
         vec![vec![crate::ui::ResolvedToken {
             kind: crate::ui::ResolvedTokenKind::Agent(row.pane_id.clone()),
@@ -350,8 +365,22 @@ pub(super) fn render_agent_row(
     };
     let indicator_width = display_width(icon.0);
     for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
-        let indent = if index == 0 { 1 } else { 3 };
-        let mut spans = vec![ratatui::text::Span::raw(" ".repeat(indent))];
+        let (indent_spaces, marker_spans) = if index == 0 {
+            (
+                3usize,
+                vec![
+                    ratatui::text::Span::raw(" "),
+                    ratatui::text::Span::styled(marker, Style::default().fg(palette.overlay0)),
+                    ratatui::text::Span::raw(" "),
+                ],
+            )
+        } else {
+            (
+                4usize,
+                vec![ratatui::text::Span::raw("    ")],
+            )
+        };
+        let mut spans = marker_spans;
         let filtered_tokens: Vec<_> = tokens
             .iter()
             .filter(|token| !matches!(token.kind, crate::ui::ResolvedTokenKind::StateIcon))
@@ -363,8 +392,8 @@ pub(super) fn render_agent_row(
             &filtered_tokens
         };
         let max_text_width = (rect.width as usize)
-            .saturating_sub(indent)
-            .saturating_sub(indicator_width + 1);
+            .saturating_sub(indent_spaces)
+            .saturating_sub(if index == 0 { indicator_width + 1 } else { 0 });
         spans.extend(crate::ui::resolved_token_spans(
             effective_tokens,
             icon,

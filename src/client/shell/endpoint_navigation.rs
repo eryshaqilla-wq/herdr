@@ -86,15 +86,25 @@ impl ClientShellState {
         point: (u16, u16),
         outcome: &mut ClientShellInput,
     ) -> bool {
-        let Some((endpoint_id, pane_id)) = self
+        let Some((rect, endpoint_id, pane_id)) = self
             .hits
             .endpoint_agents
             .iter()
             .find(|(rect, _, _)| super::contains(*rect, point))
-            .map(|(_, endpoint_id, pane_id)| (endpoint_id.clone(), pane_id.clone()))
+            .map(|(rect, endpoint_id, pane_id)| (*rect, endpoint_id.clone(), pane_id.clone()))
         else {
             return false;
         };
+        let arrow_hit = point.0 >= rect.x.saturating_add(1)
+            && point.0 <= rect.x.saturating_add(2)
+            && point.1 == rect.y;
+        if arrow_hit {
+            if !self.expanded_agents.remove(&pane_id) {
+                self.expanded_agents.insert(pane_id);
+            }
+            outcome.repaint = true;
+            return true;
+        }
         self.focus_or_activate(
             endpoint_id,
             ClientEndpointFocusTarget::Pane(pane_id),

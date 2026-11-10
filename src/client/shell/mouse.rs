@@ -2144,13 +2144,23 @@ impl ClientShellState {
                 if self.handle_endpoint_agent_click(point, outcome) {
                     return;
                 }
-                let agent_pane_id = self
+                let agent_hit = self
                     .hits
                     .agents
                     .iter()
                     .find(|(rect, _)| super::contains(*rect, point))
-                    .map(|(_, pane_id)| pane_id.clone());
-                if let Some(pane_id) = agent_pane_id {
+                    .map(|(rect, pane_id)| (*rect, pane_id.clone()));
+                if let Some((rect, pane_id)) = agent_hit {
+                    let arrow_hit = point.0 >= rect.x.saturating_add(1)
+                        && point.0 <= rect.x.saturating_add(2)
+                        && point.1 == rect.y;
+                    if arrow_hit {
+                        if !self.expanded_agents.remove(&pane_id) {
+                            self.expanded_agents.insert(pane_id);
+                        }
+                        outcome.repaint = true;
+                        return;
+                    }
                     self.push_endpoint_method(
                         crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget {
                             pane_id,
