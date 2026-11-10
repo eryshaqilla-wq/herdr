@@ -28,6 +28,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) agents_percent: u8,
     pub(super) live_percent: u8,
     pub(super) collapse_machines: bool,
+    pub(super) agent_panel_mode: crate::config::AgentPanelMode,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
     pub(super) status_indicators: crate::config::StatusIndicatorStyle,
     pub(super) sound_enabled: bool,

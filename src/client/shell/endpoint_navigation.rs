@@ -95,15 +95,17 @@ impl ClientShellState {
         else {
             return false;
         };
-        let arrow_hit = point.0 >= rect.x.saturating_add(1)
-            && point.0 <= rect.x.saturating_add(2)
-            && point.1 == rect.y;
-        if arrow_hit {
-            if !self.expanded_agents.remove(&pane_id) {
-                self.expanded_agents.insert(pane_id);
+        if self.config.agent_panel_mode == crate::config::AgentPanelMode::Eso {
+            let arrow_hit = point.0 >= rect.x.saturating_add(1)
+                && point.0 <= rect.x.saturating_add(2)
+                && point.1 == rect.y;
+            if arrow_hit {
+                if !self.expanded_agents.remove(&pane_id) {
+                    self.expanded_agents.insert(pane_id);
+                }
+                outcome.repaint = true;
+                return true;
             }
-            outcome.repaint = true;
-            return true;
         }
         self.focus_or_activate(
             endpoint_id,

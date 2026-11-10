@@ -442,17 +442,37 @@ impl Default for AgentsSidebarConfig {
         Self {
             rows: vec![
                 vec![
-                    AgentSidebarToken::Agent,
+                    AgentSidebarToken::StateIcon,
                     AgentSidebarToken::Machine,
-                ],
-                vec![
                     AgentSidebarToken::Workspace,
                     AgentSidebarToken::Tab,
-                    AgentSidebarToken::StateText,
                 ],
+                vec![AgentSidebarToken::Agent],
             ],
             rows_by_agent: BTreeMap::new(),
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentPanelMode {
+    #[default]
+    Eso,
+    Default,
+}
+
+impl<'de> Deserialize<'de> for AgentPanelMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.to_lowercase().as_str() {
+            "default" | "upstream" | "stock" | "original" => Ok(AgentPanelMode::Default),
+            "eso" | "compact" | "custom" => Ok(AgentPanelMode::Eso),
+            _ => Ok(AgentPanelMode::Eso),
         }
     }
 }
@@ -488,6 +508,8 @@ pub struct SidebarConfig {
     pub live_percent: u8,
     #[serde(alias = "auto_collapse_machines", alias = "endpoints_start_collapsed")]
     pub collapse_machines: bool,
+    #[serde(alias = "agent_mode", alias = "mode")]
+    pub agent_panel_mode: AgentPanelMode,
 }
 
 impl Default for SidebarConfig {
@@ -500,6 +522,7 @@ impl Default for SidebarConfig {
             agents_percent: 25,
             live_percent: 50,
             collapse_machines: true,
+            agent_panel_mode: AgentPanelMode::Eso,
         }
     }
 }
@@ -515,14 +538,12 @@ mod tests {
             config.agents.rows,
             vec![
                 vec![
-                    AgentSidebarToken::Agent,
+                    AgentSidebarToken::StateIcon,
                     AgentSidebarToken::Machine,
-                ],
-                vec![
                     AgentSidebarToken::Workspace,
                     AgentSidebarToken::Tab,
-                    AgentSidebarToken::StateText,
                 ],
+                vec![AgentSidebarToken::Agent],
             ]
         );
         assert!(config.agents.rows_by_agent.is_empty());
@@ -540,6 +561,7 @@ mod tests {
         assert_eq!(config.agents_percent, 25);
         assert_eq!(config.live_percent, 50);
         assert!(config.collapse_machines);
+        assert_eq!(config.agent_panel_mode, AgentPanelMode::Eso);
     }
 
     #[test]

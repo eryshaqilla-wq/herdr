@@ -128,6 +128,7 @@ impl ClientShellConfig {
             agents_percent: config.ui.sidebar.agents_percent,
             live_percent: config.ui.sidebar.live_percent,
             collapse_machines: config.ui.sidebar.collapse_machines,
+            agent_panel_mode: config.ui.sidebar.agent_panel_mode,
             agent_panel_sort: config.ui.agent_panel_sort,
             status_indicators: config.ui.status_indicators,
             sound_enabled: config.ui.sound.enabled,
@@ -360,6 +361,7 @@ impl ClientShellConfig {
                 self.agents_percent = ui.sidebar.agents_percent;
                 self.live_percent = ui.sidebar.live_percent;
                 self.collapse_machines = ui.sidebar.collapse_machines;
+                self.agent_panel_mode = ui.sidebar.agent_panel_mode;
                 self.agent_panel_sort = ui.agent_panel_sort;
                 self.status_indicators = ui.status_indicators;
                 self.sound_enabled = ui.sound.enabled;

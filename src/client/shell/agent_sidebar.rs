@@ -15,6 +15,10 @@ pub(super) struct AgentRow {
     pub(super) pane_id: String,
     pub(super) status: crate::api::schema::AgentStatus,
     pub(super) focused: bool,
+    pub(super) ai_name: String,
+    pub(super) agent_name: String,
+    pub(super) machine_label: String,
+    pub(super) workspace_label: String,
     pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
 }
 
@@ -82,8 +86,10 @@ pub(super) fn render_agent_panel(
         agent_scroll,
         hits,
         |row| {
-            if expanded_agents.contains(&row.pane_id) {
+            if config.agent_panel_mode == crate::config::AgentPanelMode::Default {
                 row.rows.len()
+            } else if expanded_agents.contains(&row.pane_id) {
+                2
             } else {
                 1
             }
@@ -324,10 +330,34 @@ pub(super) fn agent_row(
         },
         state_text,
     );
+    let ai_name = agent
+        .agent
+        .as_deref()
+        .or_else(|| canonical_agent.map(crate::detect::agent_label))
+        .or(agent.display_agent.as_deref())
+        .unwrap_or("agy")
+        .to_string();
+
+    let agent_name = agent
+        .name
+        .as_deref()
+        .or(agent.title.as_deref())
+        .or_else(|| pane.and_then(|p| p.label.as_deref()))
+        .or(agent_label)
+        .unwrap_or(&agent.pane_id)
+        .to_string();
+
+    let machine_label = machine.unwrap_or("Local").to_string();
+    let workspace_label = workspace.label.clone();
+
     Some(AgentRow {
         pane_id: agent.pane_id.clone(),
         status: agent.agent_status,
         focused: agent.focused,
+        ai_name,
+        agent_name,
+        machine_label,
+        workspace_label,
         rows,
     })
 }
@@ -354,74 +384,86 @@ pub(super) fn render_agent_row(
         status_icon(row.status, config.status_indicators),
         Style::default().fg(status_color(row.status, palette)),
     );
-    let marker = if expanded { "▾" } else { "▸" };
-    let rows = if row.rows.is_empty() {
-        vec![vec![crate::ui::ResolvedToken {
-            kind: crate::ui::ResolvedTokenKind::Agent(row.pane_id.clone()),
-            style: Default::default(),
-        }]]
-    } else {
-        row.rows.clone()
-    };
-    let indicator_width = display_width(icon.0);
-    for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
-        let (indent_spaces, marker_spans) = if index == 0 {
-            (
-                3usize,
-                vec![
-                    ratatui::text::Span::raw(" "),
-                    ratatui::text::Span::styled(marker, Style::default().fg(palette.overlay0)),
-                    ratatui::text::Span::raw(" "),
-                ],
-            )
+
+    if config.agent_panel_mode == crate::config::AgentPanelMode::Default {
+        let rows = if row.rows.is_empty() {
+            vec![vec![crate::ui::ResolvedToken {
+                kind: crate::ui::ResolvedTokenKind::StateIcon,
+                style: Default::default(),
+            }]]
         } else {
-            (
-                4usize,
-                vec![ratatui::text::Span::raw("    ")],
-            )
+            row.rows.clone()
         };
-        let mut spans = marker_spans;
-        let filtered_tokens: Vec<_> = tokens
-            .iter()
-            .filter(|token| !matches!(token.kind, crate::ui::ResolvedTokenKind::StateIcon))
-            .cloned()
-            .collect();
-        let effective_tokens = if filtered_tokens.is_empty() {
-            tokens
-        } else {
-            &filtered_tokens
-        };
-        let max_text_width = (rect.width as usize)
-            .saturating_sub(indent_spaces)
-            .saturating_sub(if index == 0 { indicator_width + 1 } else { 0 });
-        spans.extend(crate::ui::resolved_token_spans(
-            effective_tokens,
-            icon,
-            status_style,
-            name_style,
-            secondary,
-            secondary,
-            palette,
-            max_text_width,
-        ));
-        Paragraph::new(Line::from(spans)).style(row_style).render(
-            Rect::new(rect.x, rect.y + index as u16, rect.width, 1),
-            buffer,
-        );
-        if index == 0 {
-            let indicator_style = if row.focused {
-                icon.1.bg(palette.active_row_bg)
-            } else {
-                icon.1
-            };
-            put_right_text(
+        for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
+            let indent = if index == 0 { 1 } else { 3 };
+            let mut spans = vec![ratatui::text::Span::raw(" ".repeat(indent))];
+            spans.extend(crate::ui::resolved_token_spans(
+                tokens,
+                icon,
+                status_style,
+                name_style,
+                secondary,
+                secondary,
+                palette,
+                rect.width.saturating_sub(indent as u16) as usize,
+            ));
+            Paragraph::new(Line::from(spans)).style(row_style).render(
+                Rect::new(rect.x, rect.y + index as u16, rect.width, 1),
                 buffer,
-                rect,
-                rect.y,
-                icon.0,
-                indicator_style,
             );
         }
+        return;
+    }
+
+    // Eso Mode (compact AI · Agent with right indicator and arrow toggle)
+    let marker = if expanded { "▾" } else { "▸" };
+    let indicator_width = display_width(icon.0);
+
+    let prefix = format!(" {marker} {} · ", row.ai_name);
+    let prefix_width = display_width(&prefix);
+    let max_agent_width = (rect.width as usize)
+        .saturating_sub(prefix_width)
+        .saturating_sub(indicator_width + 1);
+
+    let spans = vec![
+        ratatui::text::Span::raw(" "),
+        ratatui::text::Span::styled(marker, Style::default().fg(palette.overlay0)),
+        ratatui::text::Span::raw(" "),
+        ratatui::text::Span::styled(&row.ai_name, Style::default().fg(palette.overlay0)),
+        ratatui::text::Span::styled(" · ", Style::default().fg(palette.overlay0)),
+        ratatui::text::Span::styled(
+            crate::ui::truncate_end(&row.agent_name, max_agent_width),
+            name_style,
+        ),
+    ];
+    Paragraph::new(Line::from(spans)).style(row_style).render(
+        Rect::new(rect.x, rect.y, rect.width, 1),
+        buffer,
+    );
+    let indicator_style = if row.focused {
+        icon.1.bg(palette.active_row_bg)
+    } else {
+        icon.1
+    };
+    put_right_text(
+        buffer,
+        rect,
+        rect.y,
+        icon.0,
+        indicator_style,
+    );
+
+    if expanded && rect.height > 1 {
+        let detail_spans = vec![
+            ratatui::text::Span::raw("    "),
+            ratatui::text::Span::styled(&row.machine_label, secondary),
+            ratatui::text::Span::styled(" · ", secondary),
+            ratatui::text::Span::styled(&row.workspace_label, secondary),
+        ];
+        Paragraph::new(Line::from(detail_spans)).style(row_style).render(
+            Rect::new(rect.x, rect.y + 1, rect.width, 1),
+            buffer,
+        );
     }
 }
 

@@ -2151,15 +2151,17 @@ impl ClientShellState {
                     .find(|(rect, _)| super::contains(*rect, point))
                     .map(|(rect, pane_id)| (*rect, pane_id.clone()));
                 if let Some((rect, pane_id)) = agent_hit {
-                    let arrow_hit = point.0 >= rect.x.saturating_add(1)
-                        && point.0 <= rect.x.saturating_add(2)
-                        && point.1 == rect.y;
-                    if arrow_hit {
-                        if !self.expanded_agents.remove(&pane_id) {
-                            self.expanded_agents.insert(pane_id);
+                    if self.config.agent_panel_mode == crate::config::AgentPanelMode::Eso {
+                        let arrow_hit = point.0 >= rect.x.saturating_add(1)
+                            && point.0 <= rect.x.saturating_add(2)
+                            && point.1 == rect.y;
+                        if arrow_hit {
+                            if !self.expanded_agents.remove(&pane_id) {
+                                self.expanded_agents.insert(pane_id);
+                            }
+                            outcome.repaint = true;
+                            return;
                         }
-                        outcome.repaint = true;
-                        return;
                     }
                     self.push_endpoint_method(
                         crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget {

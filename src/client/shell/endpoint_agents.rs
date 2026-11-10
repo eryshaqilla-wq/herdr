@@ -72,8 +72,10 @@ pub(super) fn render_expanded(
         agent_scroll,
         hits,
         |row| {
-            if expanded_agents.contains(&row.agent.pane_id) {
+            if config.agent_panel_mode == crate::config::AgentPanelMode::Default {
                 row.agent.rows.len()
+            } else if expanded_agents.contains(&row.agent.pane_id) {
+                2
             } else {
                 1
             }
@@ -120,8 +122,10 @@ impl ClientShellState {
         let heights = rows
             .iter()
             .map(|row| {
-                if self.expanded_agents.contains(&row.agent.pane_id) {
+                if self.config.agent_panel_mode == crate::config::AgentPanelMode::Default {
                     row.agent.rows.len().max(1).min(u16::MAX as usize) as u16
+                } else if self.expanded_agents.contains(&row.agent.pane_id) {
+                    2
                 } else {
                     1
                 }
