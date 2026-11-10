@@ -53,7 +53,7 @@ pub(super) fn render_live_panel(
     } else {
         (
             " live coding".to_string(),
-            Style::default().fg(palette.overlay0).add_modifier(Modifier::BOLD),
+            Style::default().fg(palette.overlay1).add_modifier(Modifier::BOLD),
         )
     };
 
@@ -121,11 +121,11 @@ pub(super) fn render_live_panel(
         } else if t.starts_with('-') {
             Style::default().fg(palette.red)
         } else if t.starts_with("@@") {
-            Style::default().fg(palette.accent)
+            Style::default().fg(palette.accent).add_modifier(Modifier::BOLD)
         } else if t.starts_with("diff") || t.starts_with("index") {
             Style::default().fg(palette.yellow)
         } else {
-            Style::default().fg(palette.text).add_modifier(Modifier::DIM)
+            Style::default().fg(palette.text)
         };
 
         put_text(buffer, area.x, y, area.width, line, style);
