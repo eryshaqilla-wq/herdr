@@ -19,7 +19,11 @@ fn is_known_command(cmd: &str) -> bool {
         | "echo" | "export" | "source" | "apt" | "pkg" | "apk" | "kill" | "pkill" | "pgrep"
         | "ps" | "tar" | "unzip" | "adb" | "ssh" | "scp" | "install" | "sed" | "awk"
         | "diff" | "patch" | "head" | "tail" | "touch" | "which" | "whereis" | "make"
-        | "pip" | "pip3" | "rustc" | "zig" | "zigcc"
+        | "pip" | "pip3" | "rustc" | "rustup" | "zig" | "zigcc" | "go" | "docker" | "tmux"
+        | "uptime" | "uname" | "whoami" | "id" | "env" | "clear" | "date" | "sleep" | "timeout"
+        | "htop" | "top" | "free" | "df" | "du" | "lsof" | "ip" | "ifconfig" | "netstat" | "ss"
+        | "ping" | "wget" | "jq" | "wc" | "sort" | "uniq" | "cut" | "tr" | "tee" | "xargs"
+        | "bspc" | "bspwm" | "pulseaudio" | "pactl" | "stty"
     )
 }
 
@@ -51,11 +55,33 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         return None;
     }
 
-    // 1. AGY Tool runner line format: Running (<command>...) (ctrl+o to expand)
-    // IMPORTANT: Check this FIRST before blacklist because AGY lines often contain "(esc to cancel)"!
-    if trimmed.contains("Running (") {
-        if let Some(start_idx) = trimmed.find("Running (") {
-            let rest = &trimmed[start_idx + "Running (".len()..];
+    // 1. AGY Tool runner line format:
+    // Dukung semua ragam bullet AGY: ● (selesai), ○ (berjalan), ▼ (expand), ▶ (collapse), •, *
+    let stripped_bullet = trimmed.trim_start_matches(|c: char| matches!(c, '●' | '•' | '○' | '▶' | '▼' | '▲' | '*' | '-' | ' ' | '\t'));
+    let lower_stripped = stripped_bullet.to_lowercase();
+
+    // a. AGY Tool runner: Bash(...) / bash(...) / run_command(...) / RunCommand(...)
+    if lower_stripped.starts_with("bash(")
+        || lower_stripped.starts_with("run_command(")
+        || lower_stripped.starts_with("command(")
+    {
+        let open_idx = stripped_bullet.find('(').unwrap_or(0);
+        let rest = &stripped_bullet[open_idx + 1..];
+        let cmd_text = if let Some(end_idx) = rest.rfind(')') {
+            &rest[..end_idx]
+        } else {
+            rest
+        };
+        let clean_cmd = cmd_text.trim();
+        if !clean_cmd.is_empty() {
+            return Some(clean_cmd.to_string());
+        }
+    }
+
+    // b. AGY Summary header: "Ran 2 commands (<cmd>...)" atau "Ran command (<cmd>)"
+    if stripped_bullet.starts_with("Ran ") && stripped_bullet.contains("command") && stripped_bullet.contains('(') {
+        if let Some(start_idx) = stripped_bullet.find('(') {
+            let rest = &stripped_bullet[start_idx + 1..];
             let cmd_text = if let Some(end_idx) = rest.find(") (") {
                 &rest[..end_idx]
             } else if let Some(end_idx) = rest.rfind(')') {
@@ -64,11 +90,50 @@ fn parse_code_or_command(line: &str) -> Option<String> {
                 rest
             };
             let clean_cmd = cmd_text.trim();
-            // Hanya terima jika perintah utuh dan tidak terpotong tanda ...
-            if !clean_cmd.is_empty() && !clean_cmd.ends_with("...") {
+            if !clean_cmd.is_empty() {
                 return Some(clean_cmd.to_string());
             }
         }
+    }
+
+    // c. AGY Running line: "Running (<cmd>...) (ctrl+o to expand)" atau "Running (<cmd>)"
+    if stripped_bullet.contains("Running (") {
+        if let Some(start_idx) = stripped_bullet.find("Running (") {
+            let rest = &stripped_bullet[start_idx + "Running (".len()..];
+            let cmd_text = if let Some(end_idx) = rest.find(") (") {
+                &rest[..end_idx]
+            } else if let Some(end_idx) = rest.rfind(')') {
+                &rest[..end_idx]
+            } else {
+                rest
+            };
+            let clean_cmd = cmd_text.trim();
+            if !clean_cmd.is_empty() {
+                return Some(clean_cmd.to_string());
+            }
+        }
+    }
+
+    // d. AGY CommandLine parameter: CommandLine: "..."
+    if stripped_bullet.contains("CommandLine:") {
+        if let Some(start_idx) = stripped_bullet.find("CommandLine:") {
+            let rest = stripped_bullet[start_idx + "CommandLine:".len()..].trim();
+            let unquoted = rest.trim_matches(|c: char| c == '"' || c == '\'' || c == ',' || c == ' ');
+            if !unquoted.is_empty() {
+                return Some(unquoted.to_string());
+            }
+        }
+    }
+
+    // e. AGY File tools: ReadFile / EditFile / WriteFile
+    if lower_stripped.starts_with("readfile(")
+        || lower_stripped.starts_with("read_file(")
+        || lower_stripped.starts_with("editfile(")
+        || lower_stripped.starts_with("edit_file(")
+        || lower_stripped.starts_with("writefile(")
+        || lower_stripped.starts_with("write_file(")
+    {
+        return Some(stripped_bullet.to_string());
     }
 
     // 2. Blacklist checks (strict rejection of UI chrome, banners, chat, prompts)
@@ -103,15 +168,21 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         return None;
     }
 
-    // Reject shell prompts / terminal markers
-    if trimmed == ">"
-        || trimmed == "~"
-        || trimmed == "$"
-        || trimmed == "#"
-        || trimmed.starts_with("root@")
-        || (trimmed.ends_with('$') && trimmed.contains('@'))
-        || (trimmed.ends_with('#') && trimmed.contains('@'))
-    {
+    // Extract shell prompt command: root@host:path# cmd atau user@host:path$ cmd
+    if trimmed.contains('@') {
+        if let Some(pos) = trimmed.find("# ").or_else(|| trimmed.find("$ ")) {
+            let cmd = trimmed[pos + 2..].trim();
+            if !cmd.is_empty() {
+                return Some(cmd.to_string());
+            }
+        }
+        if trimmed.ends_with('#') || trimmed.ends_with('$') || trimmed.starts_with("root@") {
+            return None;
+        }
+    }
+
+    // Reject standalone shell prompts / terminal markers
+    if trimmed == ">" || trimmed == "~" || trimmed == "$" || trimmed == "#" {
         return None;
     }
 
@@ -150,7 +221,7 @@ fn parse_code_or_command(line: &str) -> Option<String> {
     if trimmed.starts_with('❯') || trimmed.starts_with('➜') {
         let after_prompt = trimmed.trim_start_matches(|c: char| c == '❯' || c == '➜' || c == ' ').trim();
         let first_word = after_prompt.split_whitespace().next().unwrap_or("");
-        if is_known_command(first_word) {
+        if is_known_command(first_word) || first_word.starts_with("./") || first_word.starts_with('/') {
             return Some(after_prompt.to_string());
         }
     }
@@ -170,9 +241,9 @@ fn parse_code_or_command(line: &str) -> Option<String> {
     }
 
     // 4. Starts with a known binary or shell command -> tampilkan murni tanpa $
-    let first_word = trimmed.split_whitespace().next().unwrap_or("");
-    if is_known_command(first_word) {
-        return Some(trimmed.to_string());
+    let first_word = stripped_bullet.split_whitespace().next().unwrap_or("");
+    if is_known_command(first_word) || first_word.starts_with("./") || first_word.starts_with('/') {
+        return Some(stripped_bullet.to_string());
     }
 
     // 5. Git diff lines
@@ -189,14 +260,18 @@ fn parse_code_or_command(line: &str) -> Option<String> {
     }
 
     // 6. Tool call / file modification indicators
-    if trimmed.starts_with("[edit]")
-        || trimmed.starts_with("[write]")
-        || trimmed.starts_with("[patch]")
-        || trimmed.starts_with("edit_file(")
-        || trimmed.starts_with("write_file(")
-        || trimmed.starts_with("```")
+    if stripped_bullet.starts_with("[edit]")
+        || stripped_bullet.starts_with("[write]")
+        || stripped_bullet.starts_with("[patch]")
+        || stripped_bullet.starts_with("edit_file(")
+        || stripped_bullet.starts_with("write_file(")
+        || stripped_bullet.starts_with("read_file(")
+        || stripped_bullet.starts_with("ReadFile(")
+        || stripped_bullet.starts_with("EditFile(")
+        || stripped_bullet.starts_with("WriteFile(")
+        || stripped_bullet.starts_with("```")
     {
-        return Some(trimmed.to_string());
+        return Some(stripped_bullet.to_string());
     }
 
     // 7. Code keywords (Rust, Python, JS/TS, Go, C)
@@ -507,10 +582,30 @@ mod tests {
 
     #[test]
     fn test_parse_code_or_command() {
-        // Baris yang terpotong elipsis (...) ditolak agar tidak menampilkan kode terpotong
+        // Perintah yang sedang berjalan maupun ringkasan collapsed tetap ditangkap agar codeviewer aktif
         assert_eq!(
             parse_code_or_command("Running (su -c \"screencap -p...) (ctrl+o to expand)"),
-            None
+            Some("su -c \"screencap -p...".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("• Ran 2 commands (uptime && he...) (ctrl+o to collapse)"),
+            Some("uptime && he...".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("root@kali:~# uptime"),
+            Some("uptime".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("eso@poco:~$ ./start.sh"),
+            Some("./start.sh".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("● bash(uptime)"),
+            Some("uptime".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("● run_command(cat /etc/os-release)"),
+            Some("cat /etc/os-release".to_string())
         );
         // Perintah utuh diterima dan ditampilkan murni tanpa awalan $
         assert_eq!(
@@ -532,6 +627,22 @@ mod tests {
         assert_eq!(
             parse_code_or_command("+pub fn main() {"),
             Some("+pub fn main() {".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("● Bash(uptime && herdr status 2>/dev/null || true)"),
+            Some("uptime && herdr status 2>/dev/null || true".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("● Bash(herdr machine list 2>/dev/null || true)"),
+            Some("herdr machine list 2>/dev/null || true".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("● ReadFile(/project/herdr/Cargo.toml)"),
+            Some("ReadFile(/project/herdr/Cargo.toml)".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("● git status"),
+            Some("git status".to_string())
         );
         assert_eq!(parse_code_or_command("Antigravity CLI 1.5.4"), None);
         assert_eq!(parse_code_or_command("> siap kerja bro?"), None);
