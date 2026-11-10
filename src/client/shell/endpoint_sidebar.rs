@@ -578,6 +578,7 @@ pub(super) fn render_expanded(
             buffer,
             live_area,
             active_snapshot,
+            Some(state.endpoints),
             config,
             state.pane_surface,
             state.live_code_lines,

@@ -268,6 +268,7 @@ pub(super) fn render_live_panel(
     buffer: &mut Buffer,
     area: Rect,
     snapshot: Option<&ClientShellSnapshot>,
+    endpoints: Option<&[ClientShellEndpoint]>,
     config: &ClientShellConfig,
     pane_surface: Option<&PaneSurfaceFrame>,
     live_code_history: &mut Vec<String>,
@@ -291,13 +292,30 @@ pub(super) fn render_live_panel(
         return;
     }
 
-    // Check active working agent
+    // Check active working agent (either in snapshot or endpoints)
     let mut active_agent_name = None;
     if let Some(snap) = snapshot {
         for ag in &snap.agents {
             if ag.agent_status == crate::api::schema::AgentStatus::Working {
                 active_agent_name = ag.name.as_deref().or(ag.agent.as_deref());
                 break;
+            }
+        }
+    }
+    if active_agent_name.is_none() {
+        if let Some(eps) = endpoints {
+            for ep in eps {
+                if let Some(snap) = ep.snapshot.as_deref() {
+                    for ag in &snap.agents {
+                        if ag.agent_status == crate::api::schema::AgentStatus::Working {
+                            active_agent_name = ag.name.as_deref().or(ag.agent.as_deref());
+                            break;
+                        }
+                    }
+                }
+                if active_agent_name.is_some() {
+                    break;
+                }
             }
         }
     }
@@ -314,14 +332,18 @@ pub(super) fn render_live_panel(
             .add_modifier(Modifier::BOLD),
     );
 
-    // Label kanan: serasi dengan label "grouped" pada header agents
-    let right_label = active_agent_name.unwrap_or("idle");
+    // Label kanan: merah saat idle, hijau tebal saat ada agent aktif (master, worker, dll)
+    let (right_label, right_style) = if let Some(name) = active_agent_name {
+        (name, Style::default().fg(palette.green).add_modifier(Modifier::BOLD))
+    } else {
+        ("idle", Style::default().fg(palette.red))
+    };
     put_right_text(
         buffer,
         Rect::new(area.x, area.y + 1, area.width.saturating_sub(1), 1),
         area.y + 1,
         right_label,
-        Style::default().fg(palette.overlay0),
+        right_style,
     );
 
     let content_y = area.y + 2;

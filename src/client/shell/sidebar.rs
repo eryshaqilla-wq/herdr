@@ -453,6 +453,7 @@ pub(crate) fn render_sidebar(
             buffer,
             live_area,
             Some(snapshot),
+            Some(state.endpoints),
             config,
             state.pane_surface,
             state.live_code_lines,
