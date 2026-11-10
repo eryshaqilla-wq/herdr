@@ -1036,6 +1036,7 @@ impl ClientShellState {
                 .or_default()
                 .extend(saved.collapsed_groups);
         }
+        let collapse_machines = config.collapse_machines;
         Self {
             machine_diagnostics: Default::default(),
             config,
@@ -1079,7 +1080,7 @@ impl ClientShellState {
             hits: ShellHitMap::default(),
             endpoints: vec![local_endpoint()],
             active_endpoint_id: ClientEndpointId::Local,
-            collapsed_endpoints: if config.collapse_machines {
+            collapsed_endpoints: if collapse_machines {
                 let mut set = HashSet::new();
                 set.insert(ClientEndpointId::Local);
                 set
