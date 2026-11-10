@@ -506,9 +506,9 @@ impl Default for SidebarConfig {
             agents: AgentsSidebarConfig::default(),
             spaces: SpacesSidebarConfig::default(),
             live_enabled: true,
-            machines_percent: 25,
-            agents_percent: 25,
-            live_percent: 50,
+            machines_percent: 20,
+            agents_percent: 20,
+            live_percent: 60,
             collapse_machines: true,
             agent_panel_mode: AgentPanelMode::Eso,
         }
@@ -545,9 +545,9 @@ mod tests {
         );
         assert_eq!(config.spaces.row_gap, 0);
         assert!(config.live_enabled);
-        assert_eq!(config.machines_percent, 25);
-        assert_eq!(config.agents_percent, 25);
-        assert_eq!(config.live_percent, 50);
+        assert_eq!(config.machines_percent, 20);
+        assert_eq!(config.agents_percent, 20);
+        assert_eq!(config.live_percent, 60);
         assert!(config.collapse_machines);
         assert_eq!(config.agent_panel_mode, AgentPanelMode::Eso);
     }
