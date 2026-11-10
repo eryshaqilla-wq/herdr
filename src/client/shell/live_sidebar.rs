@@ -4,7 +4,7 @@ use ratatui::{
     style::{Modifier, Style},
 };
 
-use super::render::put_text;
+use super::render::{put_right_text, put_text};
 use super::*;
 use crate::protocol::PaneSurfaceFrame;
 
@@ -140,6 +140,68 @@ fn is_code_or_diff(line: &str) -> bool {
     false
 }
 
+fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
+    if line.is_empty() || max_width == 0 {
+        return vec![String::new()];
+    }
+    let chars: Vec<char> = line.chars().collect();
+    if chars.len() <= max_width {
+        return vec![line.to_string()];
+    }
+
+    let mut result = Vec::new();
+    let mut start = 0;
+
+    while start < chars.len() {
+        let remaining = chars.len() - start;
+        let is_first = start == 0;
+        let current_max = if is_first {
+            max_width.max(1)
+        } else {
+            max_width.saturating_sub(2).max(1)
+        };
+
+        if remaining <= current_max {
+            let chunk: String = chars[start..].iter().collect();
+            if is_first {
+                result.push(chunk);
+            } else {
+                result.push(format!("  {chunk}"));
+            }
+            break;
+        }
+
+        let mut break_pos = start + current_max;
+        let search_start = start + (current_max / 2).max(1);
+        let mut found_break = false;
+
+        if search_start < break_pos {
+            for pos in (search_start..=break_pos).rev() {
+                if pos < chars.len() && matches!(chars[pos], ' ' | ',' | ';' | '(' | ')' | '{' | '}' | '[' | ']') {
+                    break_pos = pos + 1;
+                    found_break = true;
+                    break;
+                }
+            }
+        }
+
+        if !found_break {
+            break_pos = start + current_max;
+        }
+
+        let chunk: String = chars[start..break_pos].iter().collect();
+        if is_first {
+            result.push(chunk);
+        } else {
+            result.push(format!("  {chunk}"));
+        }
+
+        start = break_pos;
+    }
+
+    result
+}
+
 fn append_unique_stream(history: &mut Vec<String>, incoming: &[String], max_capacity: usize) {
     if incoming.is_empty() {
         return;
@@ -201,25 +263,36 @@ pub(super) fn render_live_panel(
         }
     }
 
-    let (title_text, title_style) = if let Some(name) = active_agent_name {
-        (
-            format!(" ● live ({name})"),
-            Style::default().fg(palette.green).add_modifier(Modifier::BOLD),
-        )
-    } else {
-        (
-            " live coding".to_string(),
-            Style::default().fg(palette.overlay1).add_modifier(Modifier::BOLD),
-        )
-    };
+    // Header title: serasi dengan " machines" dan " agents" (bold overlay0)
+    put_text(
+        buffer,
+        area.x,
+        area.y + 1,
+        area.width,
+        " live coding",
+        Style::default()
+            .fg(palette.overlay0)
+            .add_modifier(Modifier::BOLD),
+    );
 
-    put_text(buffer, area.x, area.y + 1, area.width, &title_text, title_style);
+    // Label kanan: serasi dengan label "grouped" pada header agents
+    let right_label = active_agent_name.unwrap_or("idle");
+    put_right_text(
+        buffer,
+        Rect::new(area.x, area.y + 1, area.width.saturating_sub(1), 1),
+        area.y + 1,
+        right_label,
+        Style::default().fg(palette.overlay0),
+    );
 
     let content_y = area.y + 2;
     let available_rows = area.height.saturating_sub(2);
     if available_rows == 0 {
         return;
     }
+
+    // Lebar konten: mengikuti lebar panel dikurangi margin 1 kolom agar pas
+    let content_width = area.width.saturating_sub(1) as usize;
 
     // Extract live terminal cells
     let mut raw_code_lines = Vec::new();
@@ -241,24 +314,20 @@ pub(super) fn render_live_panel(
     // Append newly detected code lines to persistent history
     append_unique_stream(live_code_history, &raw_code_lines, 200);
 
-    // Prepare display lines
+    // Prepare display lines dengan auto-wrapping agar teks tidak terpotong
     let fallback_idle = [
         "  waiting for code changes...".to_string(),
         "  (idle · watching background diff)".to_string(),
     ];
-    let display_lines: &[String] = if !live_code_history.is_empty() {
+    let lines_source: &[String] = if !live_code_history.is_empty() {
         live_code_history.as_slice()
     } else {
         &fallback_idle
     };
 
-    let start_idx = display_lines.len().saturating_sub(available_rows as usize);
-    for (i, line) in display_lines[start_idx..].iter().enumerate() {
-        let y = content_y + (i as u16);
-        if y >= area.bottom() {
-            break;
-        }
-        let t = line.trim_start();
+    let mut wrapped_lines: Vec<(String, Style)> = Vec::new();
+    for raw_line in lines_source {
+        let t = raw_line.trim_start();
         let style = if t.starts_with('+') {
             Style::default().fg(palette.green)
         } else if t.starts_with('-') {
@@ -286,6 +355,44 @@ pub(super) fn render_live_panel(
             Style::default().fg(palette.text)
         };
 
-        put_text(buffer, area.x, y, area.width, line, style);
+        for wrapped in wrap_code_line(raw_line, content_width) {
+            wrapped_lines.push((wrapped, style));
+        }
+    }
+
+    let start_idx = wrapped_lines.len().saturating_sub(available_rows as usize);
+    for (i, (line, style)) in wrapped_lines[start_idx..].iter().enumerate() {
+        let y = content_y + (i as u16);
+        if y >= area.bottom() {
+            break;
+        }
+        put_text(buffer, area.x + 1, y, area.width.saturating_sub(1), line, *style);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wrap_code_line() {
+        let line = "pub fn test(a: i32, b: i32) -> i32 { a + b }";
+        let wrapped = wrap_code_line(line, 20);
+        assert!(wrapped.len() > 1);
+        for w in &wrapped {
+            assert!(w.len() <= 20);
+        }
+    }
+
+    #[test]
+    fn test_is_code_or_diff_filtering() {
+        assert!(!is_code_or_diff("Antigravity CLI 1.5.4"));
+        assert!(!is_code_or_diff("> siap kerja bro?"));
+        assert!(!is_code_or_diff("Generating..."));
+        assert!(!is_code_or_diff("▲ Sign-in update needed"));
+        assert!(is_code_or_diff("+pub fn main() {"));
+        assert!(is_code_or_diff("-    old_code();"));
+        assert!(is_code_or_diff("@@ -1,5 +1,6 @@"));
+        assert!(is_code_or_diff("    let x = 10;"));
     }
 }
