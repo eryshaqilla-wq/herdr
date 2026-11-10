@@ -440,15 +440,10 @@ impl AgentsSidebarConfig {
 impl Default for AgentsSidebarConfig {
     fn default() -> Self {
         Self {
-            rows: vec![
-                vec![
-                    AgentSidebarToken::StateIcon,
-                    AgentSidebarToken::Machine,
-                    AgentSidebarToken::Workspace,
-                    AgentSidebarToken::Tab,
-                ],
-                vec![AgentSidebarToken::Agent],
-            ],
+            rows: vec![vec![
+                AgentSidebarToken::Agent,
+                AgentSidebarToken::Machine,
+            ]],
             rows_by_agent: BTreeMap::new(),
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
         }
@@ -484,6 +479,8 @@ pub struct SidebarConfig {
     pub machines_percent: u8,
     pub agents_percent: u8,
     pub live_percent: u8,
+    #[serde(alias = "auto_collapse_machines", alias = "endpoints_start_collapsed")]
+    pub collapse_machines: bool,
 }
 
 impl Default for SidebarConfig {
@@ -495,6 +492,7 @@ impl Default for SidebarConfig {
             machines_percent: 25,
             agents_percent: 25,
             live_percent: 50,
+            collapse_machines: true,
         }
     }
 }
@@ -508,15 +506,10 @@ mod tests {
         let config = SidebarConfig::default();
         assert_eq!(
             config.agents.rows,
-            vec![
-                vec![
-                    AgentSidebarToken::StateIcon,
-                    AgentSidebarToken::Machine,
-                    AgentSidebarToken::Workspace,
-                    AgentSidebarToken::Tab,
-                ],
-                vec![AgentSidebarToken::Agent],
-            ]
+            vec![vec![
+                AgentSidebarToken::Agent,
+                AgentSidebarToken::Machine,
+            ]]
         );
         assert!(config.agents.rows_by_agent.is_empty());
         assert_eq!(config.agents.row_gap, 0);
@@ -532,6 +525,7 @@ mod tests {
         assert_eq!(config.machines_percent, 25);
         assert_eq!(config.agents_percent, 25);
         assert_eq!(config.live_percent, 50);
+        assert!(config.collapse_machines);
     }
 
     #[test]

@@ -27,6 +27,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) machines_percent: u8,
     pub(super) agents_percent: u8,
     pub(super) live_percent: u8,
+    pub(super) collapse_machines: bool,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
     pub(super) status_indicators: crate::config::StatusIndicatorStyle,
     pub(super) sound_enabled: bool,
@@ -1076,7 +1077,13 @@ impl ClientShellState {
             hits: ShellHitMap::default(),
             endpoints: vec![local_endpoint()],
             active_endpoint_id: ClientEndpointId::Local,
-            collapsed_endpoints: HashSet::new(),
+            collapsed_endpoints: if config.collapse_machines {
+                let mut set = HashSet::new();
+                set.insert(ClientEndpointId::Local);
+                set
+            } else {
+                HashSet::new()
+            },
             mode: ClientShellMode::Terminal,
             navigate_workspace_id: None,
             pending_workspace_highlight: None,

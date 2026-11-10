@@ -127,6 +127,7 @@ impl ClientShellConfig {
             machines_percent: config.ui.sidebar.machines_percent,
             agents_percent: config.ui.sidebar.agents_percent,
             live_percent: config.ui.sidebar.live_percent,
+            collapse_machines: config.ui.sidebar.collapse_machines,
             agent_panel_sort: config.ui.agent_panel_sort,
             status_indicators: config.ui.status_indicators,
             sound_enabled: config.ui.sound.enabled,
@@ -354,6 +355,11 @@ impl ClientShellConfig {
                 self.hide_tab_bar_when_single_tab = ui.hide_tab_bar_when_single_tab;
                 self.spaces = ui.sidebar.spaces.clone();
                 self.agents = ui.sidebar.agents.clone();
+                self.live_enabled = ui.sidebar.live_enabled;
+                self.machines_percent = ui.sidebar.machines_percent;
+                self.agents_percent = ui.sidebar.agents_percent;
+                self.live_percent = ui.sidebar.live_percent;
+                self.collapse_machines = ui.sidebar.collapse_machines;
                 self.agent_panel_sort = ui.agent_panel_sort;
                 self.status_indicators = ui.status_indicators;
                 self.sound_enabled = ui.sound.enabled;

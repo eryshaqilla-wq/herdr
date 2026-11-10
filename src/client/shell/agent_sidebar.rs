@@ -8,6 +8,7 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 
+use super::render::put_right_text;
 use super::*;
 
 pub(super) struct AgentRow {
@@ -330,15 +331,9 @@ pub(super) fn render_agent_row(
     } else {
         Style::default()
     };
-    let name_style = if row.focused {
-        Style::default()
-            .fg(palette.text)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(palette.subtext0)
-            .add_modifier(Modifier::BOLD)
-    };
+    let name_style = Style::default()
+        .fg(palette.text)
+        .add_modifier(Modifier::BOLD);
     let status_style = Style::default().fg(status_color(row.status, palette));
     let secondary = Style::default().fg(palette.overlay0);
     let icon = (
@@ -347,29 +342,57 @@ pub(super) fn render_agent_row(
     );
     let rows = if row.rows.is_empty() {
         vec![vec![crate::ui::ResolvedToken {
-            kind: crate::ui::ResolvedTokenKind::StateIcon,
+            kind: crate::ui::ResolvedTokenKind::Agent(row.pane_id.clone()),
             style: Default::default(),
         }]]
     } else {
         row.rows.clone()
     };
+    let indicator_width = display_width(icon.0);
     for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
         let indent = if index == 0 { 1 } else { 3 };
         let mut spans = vec![ratatui::text::Span::raw(" ".repeat(indent))];
+        let filtered_tokens: Vec<_> = tokens
+            .iter()
+            .filter(|token| !matches!(token.kind, crate::ui::ResolvedTokenKind::StateIcon))
+            .cloned()
+            .collect();
+        let effective_tokens = if filtered_tokens.is_empty() {
+            tokens
+        } else {
+            &filtered_tokens
+        };
+        let max_text_width = (rect.width as usize)
+            .saturating_sub(indent)
+            .saturating_sub(indicator_width + 1);
         spans.extend(crate::ui::resolved_token_spans(
-            tokens,
+            effective_tokens,
             icon,
             status_style,
             name_style,
             secondary,
             secondary,
             palette,
-            rect.width.saturating_sub(indent as u16) as usize,
+            max_text_width,
         ));
         Paragraph::new(Line::from(spans)).style(row_style).render(
             Rect::new(rect.x, rect.y + index as u16, rect.width, 1),
             buffer,
         );
+        if index == 0 {
+            let indicator_style = if row.focused {
+                icon.1.bg(palette.active_row_bg)
+            } else {
+                icon.1
+            };
+            put_right_text(
+                buffer,
+                rect,
+                rect.y,
+                icon.0,
+                indicator_style,
+            );
+        }
     }
 }
 

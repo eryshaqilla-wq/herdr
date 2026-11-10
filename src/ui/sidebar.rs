@@ -270,14 +270,14 @@ pub(crate) fn resolved_token_spans(
                 truncate_end(text, budgets[index]),
                 apply_token_style(state_text_style, token.style),
             )),
-            ResolvedTokenKind::Workspace(text) => spans.push(Span::styled(
+            ResolvedTokenKind::Workspace(text)
+            | ResolvedTokenKind::Agent(text) => spans.push(Span::styled(
                 truncate_end(text, budgets[index]),
                 apply_token_style(workspace_style, token.style),
             )),
             ResolvedTokenKind::Machine(text)
             | ResolvedTokenKind::Tab(text)
             | ResolvedTokenKind::Pane(text)
-            | ResolvedTokenKind::Agent(text)
             | ResolvedTokenKind::Branch(text) => spans.push(Span::styled(
                 truncate_end(text, budgets[index]),
                 apply_token_style(secondary_style, token.style),

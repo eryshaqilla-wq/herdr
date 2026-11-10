@@ -62,6 +62,9 @@ impl ClientShellState {
                 .filter(|endpoint| {
                     profile.enabled && endpoint.status != ClientEndpointStatus::Disabled
                 });
+            if previous.is_none() && self.config.collapse_machines {
+                self.collapsed_endpoints.insert(endpoint_id.clone());
+            }
             next.push(ClientShellEndpoint {
                 endpoint_id,
                 label: profile.label.clone(),
