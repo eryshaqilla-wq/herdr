@@ -23,9 +23,31 @@ fn is_known_command(cmd: &str) -> bool {
     )
 }
 
+fn is_code_keyword(word: &str) -> bool {
+    matches!(
+        word,
+        "fn" | "pub" | "struct" | "impl" | "enum" | "let" | "const" | "static" | "use" | "mod"
+        | "def" | "class" | "import" | "from" | "return" | "yield" | "async"
+        | "function" | "export" | "var" | "interface" | "type"
+        | "if" | "else" | "elif" | "for" | "while" | "match" | "switch" | "case"
+    )
+}
+
 fn parse_code_or_command(line: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
+        return None;
+    }
+
+    // Reject standalone markdown symbols, table pipes, or empty list bullets
+    if trimmed == "|"
+        || trimmed == "│"
+        || trimmed == ":"
+        || trimmed == "-"
+        || trimmed == "•"
+        || trimmed == "---"
+        || trimmed == "***"
+    {
         return None;
     }
 
@@ -66,6 +88,23 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         || (trimmed.ends_with('#') && trimmed.contains('@'))
     {
         return None;
+    }
+
+    // Reject markdown bullet lists from chat (e.g. "• Hanya menerima...", "- Panel 1...")
+    if trimmed.starts_with("• ") {
+        return None;
+    }
+    if trimmed.starts_with("- ") {
+        let after_dash = trimmed[2..].trim();
+        let first_word = after_dash.split_whitespace().next().unwrap_or("");
+        let is_code_like = after_dash.contains(';')
+            || after_dash.contains('{')
+            || after_dash.contains('}')
+            || is_known_command(first_word)
+            || is_code_keyword(first_word);
+        if !is_code_like {
+            return None;
+        }
     }
 
     // Reject user chat prompt (e.g. "> siap kerja bro?")
@@ -113,7 +152,7 @@ fn parse_code_or_command(line: &str) -> Option<String> {
 
     // 5. Git diff lines
     if (trimmed.starts_with('+') && !trimmed.starts_with("+++ "))
-        || (trimmed.starts_with('-') && !trimmed.starts_with("--- "))
+        || (trimmed.starts_with('-') && !trimmed.starts_with("--- ") && !trimmed.starts_with("- "))
         || trimmed.starts_with("@@")
         || trimmed.starts_with("diff --git")
         || trimmed.starts_with("diff -")
@@ -150,7 +189,7 @@ fn parse_code_or_command(line: &str) -> Option<String> {
     }
 
     // Code comments
-    if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("* ") {
+    if trimmed.starts_with("//") || trimmed.starts_with("/*") {
         return Some(trimmed.to_string());
     }
     if trimmed.starts_with('#') && !trimmed.starts_with("#!") && trimmed.len() > 1 && trimmed.chars().nth(1) == Some(' ') {
@@ -162,15 +201,12 @@ fn parse_code_or_command(line: &str) -> Option<String> {
         if trimmed.ends_with(';')
             || trimmed.ends_with('{')
             || trimmed.ends_with('}')
-            || trimmed.ends_with(':')
             || trimmed.contains(" = ")
             || trimmed.contains(" := ")
             || trimmed.contains("::")
             || trimmed.contains("->")
             || trimmed.contains("=>")
             || trimmed.contains("()")
-            || (trimmed.contains('(') && trimmed.contains(')'))
-            || (trimmed.contains('[') && trimmed.contains(']'))
         {
             return Some(trimmed.to_string());
         }
@@ -180,12 +216,13 @@ fn parse_code_or_command(line: &str) -> Option<String> {
 }
 
 fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
-    if line.is_empty() || max_width == 0 {
-        return vec![String::new()];
+    let clean = line.trim();
+    if clean.is_empty() || max_width == 0 {
+        return Vec::new();
     }
-    let chars: Vec<char> = line.chars().collect();
+    let chars: Vec<char> = clean.chars().collect();
     if chars.len() <= max_width {
-        return vec![line.to_string()];
+        return vec![clean.to_string()];
     }
 
     let mut result = Vec::new();
@@ -197,15 +234,18 @@ fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
         let current_max = if is_first {
             max_width.max(1)
         } else {
-            max_width.saturating_sub(2).max(1)
+            max_width.saturating_sub(1).max(1)
         };
 
         if remaining <= current_max {
             let chunk: String = chars[start..].iter().collect();
-            if is_first {
-                result.push(chunk);
-            } else {
-                result.push(format!("  {chunk}"));
+            let chunk_trimmed = chunk.trim();
+            if !chunk_trimmed.is_empty() {
+                if is_first {
+                    result.push(chunk_trimmed.to_string());
+                } else {
+                    result.push(format!(" {chunk_trimmed}"));
+                }
             }
             break;
         }
@@ -229,10 +269,13 @@ fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
         }
 
         let chunk: String = chars[start..break_pos].iter().collect();
-        if is_first {
-            result.push(chunk);
-        } else {
-            result.push(format!("  {chunk}"));
+        let chunk_trimmed = chunk.trim();
+        if !chunk_trimmed.is_empty() {
+            if is_first {
+                result.push(chunk_trimmed.to_string());
+            } else {
+                result.push(format!(" {chunk_trimmed}"));
+            }
         }
 
         start = break_pos;
@@ -352,8 +395,8 @@ pub(super) fn render_live_panel(
         return;
     }
 
-    // Lebar konten: mengikuti lebar panel dikurangi margin 1 kolom agar pas
-    let content_width = area.width.saturating_sub(1) as usize;
+    // Lebar konten: mengikuti luas panel (mepet ke kiri, tanpa padding berlebihan)
+    let content_width = area.width as usize;
 
     // Extract live terminal cells
     let mut raw_code_lines = Vec::new();
@@ -377,8 +420,8 @@ pub(super) fn render_live_panel(
 
     // Prepare display lines dengan auto-wrapping agar teks tidak terpotong
     let fallback_idle = [
-        "  waiting for background tasks...".to_string(),
-        "  (idle · watching commands & diff)".to_string(),
+        " waiting for background tasks...".to_string(),
+        " (idle · watching commands & diff)".to_string(),
     ];
     let lines_source: &[String] = if !live_code_history.is_empty() {
         live_code_history.as_slice()
@@ -429,7 +472,8 @@ pub(super) fn render_live_panel(
         if y >= area.bottom() {
             break;
         }
-        put_text(buffer, area.x + 1, y, area.width.saturating_sub(1), line, *style);
+        // Mepet ke kiri mulai tepat dari area.x
+        put_text(buffer, area.x, y, area.width, line, *style);
     }
 }
 
@@ -445,6 +489,12 @@ mod tests {
         for w in &wrapped {
             assert!(w.len() <= 20);
         }
+    }
+
+    #[test]
+    fn test_wrap_no_empty_lines() {
+        assert!(wrap_code_line("", 20).is_empty());
+        assert!(wrap_code_line("   ", 20).is_empty());
     }
 
     #[test]
@@ -468,5 +518,8 @@ mod tests {
         assert_eq!(parse_code_or_command("Antigravity CLI 1.5.4"), None);
         assert_eq!(parse_code_or_command("> siap kerja bro?"), None);
         assert_eq!(parse_code_or_command("Generating..."), None);
+        assert_eq!(parse_code_or_command("|"), None);
+        assert_eq!(parse_code_or_command("• Hanya menerima git diff"), None);
+        assert_eq!(parse_code_or_command("- Panel 1: machines"), None);
     }
 }
