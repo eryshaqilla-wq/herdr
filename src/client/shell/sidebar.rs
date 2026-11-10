@@ -455,6 +455,7 @@ pub(crate) fn render_sidebar(
             Some(snapshot),
             config,
             state.pane_surface,
+            state.live_code_lines,
             hits,
         );
     }

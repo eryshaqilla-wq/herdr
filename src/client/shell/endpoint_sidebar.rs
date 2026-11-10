@@ -580,6 +580,7 @@ pub(super) fn render_expanded(
             active_snapshot,
             config,
             state.pane_surface,
+            state.live_code_lines,
             hits,
         );
     }

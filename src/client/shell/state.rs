@@ -906,6 +906,7 @@ pub(crate) struct ClientShellState {
     pub(super) active_endpoint_id: ClientEndpointId,
     pub(super) collapsed_endpoints: HashSet<ClientEndpointId>,
     pub(super) expanded_agents: HashSet<String>,
+    pub(super) live_code_lines: Vec<String>,
     pub(super) mode: ClientShellMode,
     pub(super) navigate_workspace_id: Option<WorkspaceNavigationTarget>,
     pub(super) pending_workspace_highlight: Option<PendingWorkspaceHighlight>,
@@ -1088,6 +1089,7 @@ impl ClientShellState {
                 HashSet::new()
             },
             expanded_agents: HashSet::new(),
+            live_code_lines: Vec::new(),
             mode: ClientShellMode::Terminal,
             navigate_workspace_id: None,
             pending_workspace_highlight: None,
