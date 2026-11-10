@@ -8,10 +8,25 @@ use super::render::{put_right_text, put_text};
 use super::*;
 use crate::protocol::PaneSurfaceFrame;
 
-fn is_code_or_diff(line: &str) -> bool {
+fn is_known_command(cmd: &str) -> bool {
+    let clean = cmd.trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+    matches!(
+        clean,
+        "curl" | "git" | "cd" | "ls" | "cat" | "grep" | "find" | "mkdir" | "rm" | "mv" | "cp"
+        | "chmod" | "chown" | "su" | "sudo" | "sh" | "bash" | "zsh" | "python" | "python3"
+        | "node" | "cargo" | "npm" | "pnpm" | "yarn" | "gh" | "herdr" | "baw" | "baw2" | "baw3"
+        | "ai" | "web" | "pmt" | "pemantau" | "telegram" | "termux-ipc" | "screencap"
+        | "echo" | "export" | "source" | "apt" | "pkg" | "apk" | "kill" | "pkill" | "pgrep"
+        | "ps" | "tar" | "unzip" | "adb" | "ssh" | "scp" | "install" | "sed" | "awk"
+        | "diff" | "patch" | "head" | "tail" | "touch" | "which" | "whereis" | "make"
+        | "pip" | "pip3" | "rustc" | "zig" | "zigcc"
+    )
+}
+
+fn parse_code_or_command(line: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
-        return false;
+        return None;
     }
 
     // 1. Blacklist checks (strict rejection of UI chrome, banners, chat, prompts)
@@ -29,17 +44,16 @@ fn is_code_or_diff(line: &str) -> bool {
         || lower.contains("generating...")
         || lower.contains("esc to cancel")
         || lower.contains("thinking...")
-        || lower.contains("analyzing...")
+        || lower.contains("thought for ")
         || lower.contains("press enter")
-        || lower.contains("working...")
         || lower.contains("run /logout")
     {
-        return false;
+        return None;
     }
 
     // Reject block/box-drawing ASCII art characters
     if trimmed.chars().any(|c| matches!(c, '█' | '▀' | '▄' | '░' | '▒' | '▓' | '▌' | '▐' | '╭' | '╰' | '╮' | '╯')) {
-        return false;
+        return None;
     }
 
     // Reject shell prompts / terminal markers
@@ -51,27 +65,53 @@ fn is_code_or_diff(line: &str) -> bool {
         || (trimmed.ends_with('$') && trimmed.contains('@'))
         || (trimmed.ends_with('#') && trimmed.contains('@'))
     {
-        return false;
+        return None;
     }
 
     // Reject user chat prompt (e.g. "> siap kerja bro?")
     if trimmed.starts_with('>') {
         let after_gt = trimmed[1..].trim();
-        if !after_gt.starts_with('<') && !after_gt.starts_with('/') && !after_gt.starts_with('-') {
-            let has_letters = after_gt.chars().any(|c| c.is_alphabetic());
-            let is_code_like = after_gt.contains(';')
-                || after_gt.contains('{')
-                || after_gt.contains("def ")
-                || after_gt.contains("fn ")
-                || after_gt.contains("let ");
-            if has_letters && !is_code_like {
-                return false;
+        let first_word = after_gt.split_whitespace().next().unwrap_or("");
+        let is_cmd = is_known_command(first_word);
+        let is_code_like = after_gt.contains(';')
+            || after_gt.contains('{')
+            || after_gt.contains("def ")
+            || after_gt.contains("fn ");
+        if !is_cmd && !is_code_like {
+            return None;
+        }
+    }
+
+    // 2. AGY Tool runner line format: Running (<command>...) (ctrl+o to expand)
+    if trimmed.contains("Running (") {
+        if let Some(start_idx) = trimmed.find("Running (") {
+            let rest = &trimmed[start_idx + "Running (".len()..];
+            let cmd_text = if let Some(end_idx) = rest.find(") (") {
+                &rest[..end_idx]
+            } else if let Some(end_idx) = rest.rfind(')') {
+                &rest[..end_idx]
+            } else {
+                rest
+            };
+            let clean_cmd = cmd_text.trim();
+            if !clean_cmd.is_empty() {
+                return Some(format!("$ {clean_cmd}"));
             }
         }
     }
 
-    // 2. Whitelist checks (code diffs & syntax)
-    // Git diff lines
+    // 3. Direct shell command detection ($ command or # command)
+    if trimmed.starts_with("$ ") || trimmed.starts_with("# ") {
+        return Some(trimmed.to_string());
+    }
+
+    // 4. Starts with a known binary or shell command
+    let first_word = trimmed.split_whitespace().next().unwrap_or("");
+    if is_known_command(first_word) {
+        return Some(format!("$ {trimmed}"));
+    }
+
+    // 5. Git diff lines
     if (trimmed.starts_with('+') && !trimmed.starts_with("+++ "))
         || (trimmed.starts_with('-') && !trimmed.starts_with("--- "))
         || trimmed.starts_with("@@")
@@ -81,41 +121,40 @@ fn is_code_or_diff(line: &str) -> bool {
         || trimmed.starts_with("--- a/")
         || trimmed.starts_with("+++ b/")
     {
-        return true;
+        return Some(trimmed.to_string());
     }
 
-    // Tool call / file modification indicators
+    // 6. Tool call / file modification indicators
     if trimmed.starts_with("[edit]")
         || trimmed.starts_with("[write]")
-        || trimmed.starts_with("Path:")
-        || trimmed.starts_with("Target:")
-        || trimmed.starts_with("Replacement:")
+        || trimmed.starts_with("[patch]")
+        || trimmed.starts_with("edit_file(")
+        || trimmed.starts_with("write_file(")
         || trimmed.starts_with("```")
     {
-        return true;
+        return Some(trimmed.to_string());
     }
 
-    // Code keywords (Rust, Python, JS/TS, Go, C, Shell)
+    // 7. Code keywords (Rust, Python, JS/TS, Go, C)
     let keywords = [
         "fn ", "pub fn ", "pub struct ", "pub enum ", "pub const ", "pub trait ",
         "struct ", "impl ", "enum ", "let ", "const ", "static ", "use ", "mod ",
         "def ", "class ", "import ", "from ", "async def ", "return ", "yield ",
         "function ", "export ", "var ", "interface ", "type ",
-        "if ", "else ", "elif ", "for ", "while ", "match ", "switch ", "case ",
-        "curl ", "chmod ", "mkdir ", "git ", "cargo ", "npm ", "sudo "
+        "if ", "else ", "elif ", "for ", "while ", "match ", "switch ", "case "
     ];
     for kw in &keywords {
         if trimmed.starts_with(kw) {
-            return true;
+            return Some(trimmed.to_string());
         }
     }
 
     // Code comments
     if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("* ") {
-        return true;
+        return Some(trimmed.to_string());
     }
     if trimmed.starts_with('#') && !trimmed.starts_with("#!") && trimmed.len() > 1 && trimmed.chars().nth(1) == Some(' ') {
-        return true;
+        return Some(trimmed.to_string());
     }
 
     // Indented lines with code punctuation
@@ -133,11 +172,11 @@ fn is_code_or_diff(line: &str) -> bool {
             || (trimmed.contains('(') && trimmed.contains(')'))
             || (trimmed.contains('[') && trimmed.contains(']'))
         {
-            return true;
+            return Some(trimmed.to_string());
         }
     }
 
-    false
+    None
 }
 
 fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
@@ -304,20 +343,20 @@ pub(super) fn render_live_panel(
                 let row_cells = &surface.frame.cells[r * w..(r + 1) * w];
                 let raw_line: String = row_cells.iter().map(|c| c.symbol.as_str()).collect();
                 let trimmed = raw_line.trim_end();
-                if is_code_or_diff(trimmed) {
-                    raw_code_lines.push(trimmed.to_string());
+                if let Some(parsed) = parse_code_or_command(trimmed) {
+                    raw_code_lines.push(parsed);
                 }
             }
         }
     }
 
-    // Append newly detected code lines to persistent history
+    // Append newly detected code/command lines to persistent history
     append_unique_stream(live_code_history, &raw_code_lines, 200);
 
     // Prepare display lines dengan auto-wrapping agar teks tidak terpotong
     let fallback_idle = [
-        "  waiting for code changes...".to_string(),
-        "  (idle · watching background diff)".to_string(),
+        "  waiting for background tasks...".to_string(),
+        "  (idle · watching commands & diff)".to_string(),
     ];
     let lines_source: &[String] = if !live_code_history.is_empty() {
         live_code_history.as_slice()
@@ -328,12 +367,14 @@ pub(super) fn render_live_panel(
     let mut wrapped_lines: Vec<(String, Style)> = Vec::new();
     for raw_line in lines_source {
         let t = raw_line.trim_start();
-        let style = if t.starts_with('+') {
+        let style = if t.starts_with('$') || t.starts_with('#') {
+            Style::default().fg(palette.accent).add_modifier(Modifier::BOLD)
+        } else if t.starts_with('+') {
             Style::default().fg(palette.green)
         } else if t.starts_with('-') {
             Style::default().fg(palette.red)
         } else if t.starts_with("@@") {
-            Style::default().fg(palette.accent).add_modifier(Modifier::BOLD)
+            Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)
         } else if t.starts_with("diff") || t.starts_with("index") || t.starts_with("---") || t.starts_with("+++") {
             Style::default().fg(palette.yellow)
         } else if t.starts_with("//") || t.starts_with('#') || t.starts_with("/*") || t.starts_with('*') {
@@ -385,14 +426,25 @@ mod tests {
     }
 
     #[test]
-    fn test_is_code_or_diff_filtering() {
-        assert!(!is_code_or_diff("Antigravity CLI 1.5.4"));
-        assert!(!is_code_or_diff("> siap kerja bro?"));
-        assert!(!is_code_or_diff("Generating..."));
-        assert!(!is_code_or_diff("▲ Sign-in update needed"));
-        assert!(is_code_or_diff("+pub fn main() {"));
-        assert!(is_code_or_diff("-    old_code();"));
-        assert!(is_code_or_diff("@@ -1,5 +1,6 @@"));
-        assert!(is_code_or_diff("    let x = 10;"));
+    fn test_parse_code_or_command() {
+        assert_eq!(
+            parse_code_or_command("Running (su -c \"screencap -p...) (ctrl+o to expand)"),
+            Some("$ su -c \"screencap -p...".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("curl -s https://api.binance.com"),
+            Some("$ curl -s https://api.binance.com".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("git status -s"),
+            Some("$ git status -s".to_string())
+        );
+        assert_eq!(
+            parse_code_or_command("+pub fn main() {"),
+            Some("+pub fn main() {".to_string())
+        );
+        assert_eq!(parse_code_or_command("Antigravity CLI 1.5.4"), None);
+        assert_eq!(parse_code_or_command("> siap kerja bro?"), None);
+        assert_eq!(parse_code_or_command("Generating..."), None);
     }
 }
