@@ -475,11 +475,28 @@ impl Default for SpacesSidebarConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SidebarConfig {
     pub agents: AgentsSidebarConfig,
     pub spaces: SpacesSidebarConfig,
+    pub live_enabled: bool,
+    pub machines_percent: u8,
+    pub agents_percent: u8,
+    pub live_percent: u8,
+}
+
+impl Default for SidebarConfig {
+    fn default() -> Self {
+        Self {
+            agents: AgentsSidebarConfig::default(),
+            spaces: SpacesSidebarConfig::default(),
+            live_enabled: true,
+            machines_percent: 25,
+            agents_percent: 25,
+            live_percent: 50,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -511,6 +528,10 @@ mod tests {
             ]
         );
         assert_eq!(config.spaces.row_gap, 0);
+        assert!(config.live_enabled);
+        assert_eq!(config.machines_percent, 25);
+        assert_eq!(config.agents_percent, 25);
+        assert_eq!(config.live_percent, 50);
     }
 
     #[test]

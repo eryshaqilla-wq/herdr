@@ -249,8 +249,17 @@ pub(super) fn render_expanded(
     } else {
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
-    let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
+    let (workspace_area, detail_area, live_area) = if config.live_enabled {
+        crate::ui::expanded_sidebar_sections_3way(
+            area,
+            config.machines_percent,
+            config.agents_percent,
+            config.live_percent,
+        )
+    } else {
+        let (w, d) = crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
+        (w, d, Rect::default())
+    };
     hits.sidebar_section_divider =
         crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
     put_text(
@@ -563,6 +572,16 @@ pub(super) fn render_expanded(
         state.agent_scroll,
         hits,
     );
+    if live_area.height > 0 {
+        super::live_sidebar::render_live_panel(
+            buffer,
+            live_area,
+            active_snapshot,
+            config,
+            state.pane_surface,
+            hits,
+        );
+    }
     hits.sidebar_toggle = Rect::new(
         area.right().saturating_sub(2),
         area.bottom().saturating_sub(1),

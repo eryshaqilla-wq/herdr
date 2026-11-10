@@ -47,6 +47,45 @@ fn sidebar_section_heights(total_height: u16, split_ratio: f32) -> (u16, u16) {
     )
 }
 
+pub(crate) fn sidebar_3way_heights(total_height: u16, m_pct: u8, a_pct: u8, l_pct: u8) -> (u16, u16, u16) {
+    if total_height == 0 {
+        return (0, 0, 0);
+    }
+    if total_height < 9 {
+        let h = total_height / 3;
+        return (h, h, total_height.saturating_sub(h * 2));
+    }
+    let sum = (m_pct as u32 + a_pct as u32 + l_pct as u32).max(1);
+    let m_h = (((total_height as u32) * (m_pct as u32) + sum / 2) / sum) as u16;
+    let m_h = m_h.clamp(3, total_height.saturating_sub(6));
+    
+    let remaining = total_height.saturating_sub(m_h);
+    let sub_sum = (a_pct as u32 + l_pct as u32).max(1);
+    let a_h = (((remaining as u32) * (a_pct as u32) + sub_sum / 2) / sub_sum) as u16;
+    let a_h = a_h.clamp(3, remaining.saturating_sub(3));
+    let l_h = remaining.saturating_sub(a_h);
+    (m_h, a_h, l_h)
+}
+
+pub(crate) fn expanded_sidebar_sections_3way(
+    area: Rect,
+    m_pct: u8,
+    a_pct: u8,
+    l_pct: u8,
+) -> (Rect, Rect, Rect) {
+    let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+    if content.is_empty() {
+        return (Rect::default(), Rect::default(), Rect::default());
+    }
+
+    let (m_h, a_h, l_h) = sidebar_3way_heights(content.height, m_pct, a_pct, l_pct);
+    (
+        Rect::new(content.x, content.y, content.width, m_h),
+        Rect::new(content.x, content.y + m_h, content.width, a_h),
+        Rect::new(content.x, content.y + m_h + a_h, content.width, l_h),
+    )
+}
+
 pub(crate) fn expanded_sidebar_sections(area: Rect, split_ratio: f32) -> (Rect, Rect) {
     let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
     if content.is_empty() {
