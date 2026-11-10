@@ -234,7 +234,7 @@ fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
         let current_max = if is_first {
             max_width.max(1)
         } else {
-            max_width.saturating_sub(1).max(1)
+            max_width.saturating_sub(2).max(1)
         };
 
         if remaining <= current_max {
@@ -244,7 +244,7 @@ fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
                 if is_first {
                     result.push(chunk_trimmed.to_string());
                 } else {
-                    result.push(format!(" {chunk_trimmed}"));
+                    result.push(format!("  {chunk_trimmed}"));
                 }
             }
             break;
@@ -274,7 +274,7 @@ fn wrap_code_line(line: &str, max_width: usize) -> Vec<String> {
             if is_first {
                 result.push(chunk_trimmed.to_string());
             } else {
-                result.push(format!(" {chunk_trimmed}"));
+                result.push(format!("  {chunk_trimmed}"));
             }
         }
 
@@ -395,8 +395,8 @@ pub(super) fn render_live_panel(
         return;
     }
 
-    // Lebar konten: mengikuti luas panel (mepet ke kiri, tanpa padding berlebihan)
-    let content_width = area.width as usize;
+    // Lebar konten: pas dengan panel, menyisakan 1 spasi kiri dan 1 margin kanan
+    let content_width = area.width.saturating_sub(2).max(1) as usize;
 
     // Extract live terminal cells
     let mut raw_code_lines = Vec::new();
@@ -420,8 +420,8 @@ pub(super) fn render_live_panel(
 
     // Prepare display lines dengan auto-wrapping agar teks tidak terpotong
     let fallback_idle = [
-        " waiting for background tasks...".to_string(),
-        " (idle · watching commands & diff)".to_string(),
+        "waiting for background tasks...".to_string(),
+        "(idle · watching commands & diff)".to_string(),
     ];
     let lines_source: &[String] = if !live_code_history.is_empty() {
         live_code_history.as_slice()
@@ -472,8 +472,8 @@ pub(super) fn render_live_panel(
         if y >= area.bottom() {
             break;
         }
-        // Mepet ke kiri mulai tepat dari area.x
-        put_text(buffer, area.x, y, area.width, line, *style);
+        // Samakan persis dengan panel lain: mulai dari area.x + 1 (1 spasi dari batas kiri)
+        put_text(buffer, area.x + 1, y, area.width.saturating_sub(1), line, *style);
     }
 }
 
