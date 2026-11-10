@@ -352,7 +352,7 @@ pub(super) fn render_live_panel(
             if let Some(snap) = ep.snapshot.as_deref() {
                 for ag in &snap.agents {
                     if ag.agent_status == crate::api::schema::AgentStatus::Working {
-                        let name = ag.name.as_deref().or(ag.agent.as_deref()).unwrap_or("worker");
+                        let name = ag.name.as_deref().or(ag.agent.as_deref()).unwrap_or("agent");
                         if !working_agents.contains(&name.to_string()) {
                             working_agents.push(name.to_string());
                         }
