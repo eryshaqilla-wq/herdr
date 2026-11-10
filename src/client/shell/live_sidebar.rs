@@ -335,29 +335,28 @@ pub(super) fn render_live_panel(
         return;
     }
 
-    // Check active working agent (either in snapshot or endpoints)
-    let mut active_agent_name = None;
+    // Check all active working agents (either in snapshot or endpoints)
+    let mut working_agents: Vec<String> = Vec::new();
     if let Some(snap) = snapshot {
         for ag in &snap.agents {
             if ag.agent_status == crate::api::schema::AgentStatus::Working {
-                active_agent_name = ag.name.as_deref().or(ag.agent.as_deref());
-                break;
+                let name = ag.name.as_deref().or(ag.agent.as_deref()).unwrap_or("master");
+                if !working_agents.contains(&name.to_string()) {
+                    working_agents.push(name.to_string());
+                }
             }
         }
     }
-    if active_agent_name.is_none() {
-        if let Some(eps) = endpoints {
-            for ep in eps {
-                if let Some(snap) = ep.snapshot.as_deref() {
-                    for ag in &snap.agents {
-                        if ag.agent_status == crate::api::schema::AgentStatus::Working {
-                            active_agent_name = ag.name.as_deref().or(ag.agent.as_deref());
-                            break;
+    if let Some(eps) = endpoints {
+        for ep in eps {
+            if let Some(snap) = ep.snapshot.as_deref() {
+                for ag in &snap.agents {
+                    if ag.agent_status == crate::api::schema::AgentStatus::Working {
+                        let name = ag.name.as_deref().or(ag.agent.as_deref()).unwrap_or("worker");
+                        if !working_agents.contains(&name.to_string()) {
+                            working_agents.push(name.to_string());
                         }
                     }
-                }
-                if active_agent_name.is_some() {
-                    break;
                 }
             }
         }
@@ -375,17 +374,17 @@ pub(super) fn render_live_panel(
             .add_modifier(Modifier::BOLD),
     );
 
-    // Label kanan: merah saat idle, hijau tebal saat ada agent aktif (master, worker, dll)
-    let (right_label, right_style) = if let Some(name) = active_agent_name {
-        (name, Style::default().fg(palette.green).add_modifier(Modifier::BOLD))
-    } else {
-        ("idle", Style::default().fg(palette.red))
+    // Label kanan: merah saat idle, hijau tebal saat ada agent aktif (master / agents (n))
+    let (right_label, right_style) = match working_agents.len() {
+        0 => ("idle".to_string(), Style::default().fg(palette.red)),
+        1 => (working_agents[0].clone(), Style::default().fg(palette.green).add_modifier(Modifier::BOLD)),
+        n => (format!("agents ({n})"), Style::default().fg(palette.green).add_modifier(Modifier::BOLD)),
     };
     put_right_text(
         buffer,
         Rect::new(area.x, area.y + 1, area.width.saturating_sub(1), 1),
         area.y + 1,
-        right_label,
+        &right_label,
         right_style,
     );
 
